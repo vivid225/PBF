@@ -1,11 +1,22 @@
 Package: PBF
 Type: Package
-Title: What the Package Does (Title Case)
-Version: 0.1.0
+Title: A Novel Bayesian Design in Phase I Clinical Trial Based on Predictive Bayes Factor
+Version: 1.0.0
 Author: Chenqi Fu, Xinying Fang, Shouhao Zhou
 Maintainer: Xinying Fang <fxy950225@gmail.com>
-Description: More about what it does (maybe more than one line)
-    Use four spaces when indenting paragraphs within the Description.
-License: What license is it under?
+Imports: Iso
+knitr
+Description: The primary goal of phase I clinical trials is to find the maximum 
+tolerated dose (MTD). To reach this objective, we introduce a new design for 
+phase I clinical trials, the predictive Bayes factor (PBF) design. The PBF design 
+is an innovative model-assisted design that is easy to implement in a manner 
+similar to the traditional 3+3 design, as its decision rules can be pre-tabulated 
+prior to the onset of trial, but is of more flexibility of selecting diverse 
+target toxicity rates and cohort sizes. Moreover, it has satisfactory performance 
+of selecting the true MTD to other more complicated model-based designs. Compared 
+to the Bayesian optimal interval (BOIN) design, the PBF design illustrates better 
+performance with respect to competitive average probabilities of choosing 
+the MTD and lower risk treating patients at overly toxic doses.
+License: GPL-2
 Encoding: UTF-8
 LazyData: true
