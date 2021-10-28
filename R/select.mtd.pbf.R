@@ -5,6 +5,7 @@
 #'
 #' @usage select.mtd(n.pts, n.tox)
 #'
+#' @param target the target DLT rate
 #' @param n.pts a vector containing the number of patients treated at each dose level
 #' @param n.tox a vector containing the number of patients who experienced dose-limiting
 #'              toxicity at each dose level
@@ -67,7 +68,7 @@ fit.isoreg <- function(iso, x0)
   fits
 }
 
-select.mtd.pbf <- function(n.tox = y,n.pts = n){
+select.mtd.pbf <- function(target, n.tox, n.pts){
   l <- which(n.pts>0)
   p <- n.tox[l]/n.pts[l]
   if(sum(p)==0){
@@ -75,17 +76,18 @@ select.mtd.pbf <- function(n.tox = y,n.pts = n){
   }
   iso.model <- isoreg(p)
   p.iso <- fit.isoreg(iso.model,1:length(l))
-  d <- abs(p.iso-phi)
+  d <- abs(p.iso-target)
   mtd <- l[max(which(d==min(d)))]
   p_est <- p.iso
-  out <- list(MTD = mtd,
+  out <- list(target = target,
+              MTD = mtd,
               p_est = p_est)
   class(out)<-"pbf"
   return(out)
 }
 #
-# n <- c(3, 3, 15, 9, 0)
-# y <- c(0, 0, 4, 4, 0)
-# selmtd <- select.mtd.pbf(n.pts=n, n.tox=y)
-# summary(selmtd)
-
+n <- c(3, 3, 15, 9, 0)
+y <- c(0, 0, 4, 4, 0)
+selmtd <- select.mtd.pbf(target = 0.3, n.pts=n, n.tox=y)
+summary(selmtd)
+selmtd$p_est

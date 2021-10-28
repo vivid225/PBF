@@ -55,6 +55,36 @@
 #' @export
 #'
 
+fit.isoreg <- function(iso, x0)
+{
+  if(length(x0)==1){
+    return(iso$yf)
+  }
+  o = iso$o
+  if (is.null(o))
+    o = 1:length(x0)
+  x = unique(iso$x[o])
+  y = iso$yf
+  ind = cut(x0, breaks = x, labels = FALSE, include.lowest = TRUE)
+  min.x <- min(x)
+  max.x <- max(x)
+  adjusted.knots <- iso$iKnots[c(which(iso$yf[iso$iKnots] > 0))]
+  fits = sapply(seq(along = x0), function(i) {
+    j = ind[i]
+
+    # Find the upper and lower parts of the step
+    upper.step.n <- min(which(adjusted.knots > j))
+    upper.step <- adjusted.knots[upper.step.n]
+    lower.step <- ifelse(upper.step.n==1, 1, adjusted.knots[upper.step.n -1] )
+
+    # Perform a liner interpolation between the start and end of the step
+    denom <- x[upper.step] - x[lower.step]
+    denom <- ifelse(denom == 0, 1, denom)
+    val <- y[lower.step] + (y[upper.step] - y[lower.step]) * (x0[i] - x[lower.step]) / (denom)
+  })
+  fits
+}
+
 scene <- function(target,K){
   MTD <- sample(K,1)
   M <- rbeta(1,max(K-MTD,0.5),1)
@@ -75,7 +105,7 @@ scene <- function(target,K){
   round(skeleton,digits = 2)
 }
 
-iso <- function(p1,p0){
+iso <- function(p1,p0,phi){
   l <- which(p0>0)
   p <- p1[l]/p0[l]
   if(sum(p)==0){
@@ -96,8 +126,10 @@ cont <- function(x,n.level){
 }
 
 ## Simulate trials, with early termination rules
-trial_early <- function(lower,upper,elim.lower,elim.upper,skeleton,start=1)
+trial_early <- function(target,lower,upper,elim.lower,elim.upper,skeleton,start=1,
+                        n.trial,n.cohort,cohortsize,risk.cutoff=0.8)
 {
+  n <- n.cohort*cohortsize
   true.mtd <- which.min(abs(skeleton-target))
   K <- length(skeleton)
   mtd <- rep(NA,n.trial)
@@ -155,7 +187,7 @@ trial_early <- function(lower,upper,elim.lower,elim.upper,skeleton,start=1)
     }
     if(is.na(mtd[count])){
       #mtd[count] <- select.mtd(target = target,npts = dose.treated*cohortsize,ntox = dose.dlt)$MTD
-      mtd[count] <- iso(dose.dlt,dose.treated*cohortsize)
+      mtd[count] <- iso(dose.dlt,dose.treated*cohortsize,phi=target)
     }
     if(is.na(mtd[count])){
       next
@@ -186,8 +218,10 @@ trial_early <- function(lower,upper,elim.lower,elim.upper,skeleton,start=1)
 }
 
 ## Simulate trials, without early termination rules
-trial <- function(lower,upper,skeleton,risk.cutoff=0.8)
+trial <- function(target,lower,upper,skeleton,risk.cutoff=0.8,
+                  n.trial,n.cohort,cohortsize)
 {
+  n <- n.cohort*cohortsize
   true.mtd <- which.min(abs(skeleton-target))
   K <- length(skeleton)
   start.dose <- 1
@@ -216,7 +250,7 @@ trial <- function(lower,upper,skeleton,risk.cutoff=0.8)
         dose.next <- length(skeleton)
       }
     }
-    mtd[count] <- iso(dose.dlt,dose.treated*cohortsize)
+    mtd[count] <- iso(dose.dlt,dose.treated*cohortsize,phi=target)
     num.p <- num.p+dose.treated*cohortsize
     num.tox <- num.tox+dose.dlt
     if(true.mtd==1){
@@ -243,7 +277,7 @@ trial <- function(lower,upper,skeleton,risk.cutoff=0.8)
 get.oc.pbf = function(target,n.cohort,cohortsize,skeleton,n.trial=1000,
                       risk.cutoff=0.8,earlyterm=TRUE,start=1){
   # lower,upper,skeleton,n.trial=1000,risk.cutoff=0.8
-
+  phi <- target
   if (cohortsize > 1) {
     res = get.boundary.pbf(target=target,n.cohort=n.cohort,cohortsize = cohortsize)$out.boundary
   }
@@ -254,9 +288,10 @@ get.oc.pbf = function(target,n.cohort,cohortsize,skeleton,n.trial=1000,
   res[which(is.na(res))] <- -Inf
 
   if (earlyterm){
-    out <- trial_early(lower=res[2,],upper=res[3,],
+    out <- trial_early(target=target,lower=res[2,],upper=res[3,],
                        elim.lower=res[4,],elim.upper=res[5,],
-                       skeleton=skeleton,start=start)
+                       skeleton=skeleton,start=start,n.trial=n.trial,
+                       n.cohort = n.cohort,cohortsize=cohortsize)
     out$sel.pct <- cont(x = out$num.mtd, n.level = length(skeleton))/n.trial
     out$num.p <- colSums(out$num.p)/n.trial
     out$num.tox <- colSums(out$num.tox)/n.trial
@@ -265,7 +300,8 @@ get.oc.pbf = function(target,n.cohort,cohortsize,skeleton,n.trial=1000,
     out$risk.under <- mean(out$risk.under)
 
   } else {
-    out <- trial(lower=res[2,],upper=res[3,],skeleton=skeleton,start=start)
+    out <- trial(target=target,lower=res[2,],upper=res[3,],skeleton=skeleton,start=start,
+                 n.trial = n.trial,n.cohort = n.cohort,cohortsize=cohortsize)
     out$sel.pct <- cont(x = out$num.mtd, n.level = length(skeleton))/n.trial
     out$num.p <- out$num.p/n.trial
     out$num.tox <- out$num.tox/n.trial
@@ -276,7 +312,7 @@ get.oc.pbf = function(target,n.cohort,cohortsize,skeleton,n.trial=1000,
   return(out)
 
 }
-# octest <- get.oc.pbf(target=0.3,n.cohort=10,cohortsize=3,skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
-#                      risk.cutoff=0.8,earlyterm=TRUE,start=1)
-# summary(octest)
+octest <- get.oc.pbf(target=0.3,n.cohort=10,cohortsize=3,skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
+                     risk.cutoff=0.8,earlyterm=TRUE,start=1)
+summary(octest)
 

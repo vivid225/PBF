@@ -1,0 +1,63 @@
+---
+title: "PBF demo"
+author: "Xinying Fang"
+date: "10/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(PBF)
+```
+
+
+## get.boundary.pbf
+
+```{r}
+bd <-  get.boundary.pbf(n.cohort = 10, cohortsize = 3, target=0.3)
+summary(bd)
+# plot(bd)
+```
+
+
+```{r}
+include_graphics("/Users/rrrrrita/Documents/GitHub/PBF/inst/Flowchart/PBF_Flowchart.png")
+print(bd$out.boundary)##C_e, C_d; E
+```
+
+
+## get.oc.pdf
+
+```{r}
+oc <- get.oc.pbf(target=0.3,n.cohort=10,cohortsize=3,skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,risk.cutoff=0.8,earlyterm=TRUE,start=1) ##specify the dose to start
+## add titration as default option
+
+summary(oc) # summarize design operating characteristics
+plot(oc)
+```
+
+## select.mtd.pbf
+
+```{r}
+n <- c(3, 3, 15, 9, 0) ## last column with no data points
+y <- c(0, 0, 4, 4, 0)
+selmtd <- select.mtd.pbf(target = 0.3, n.pts=n, n.tox=y)
+summary(selmtd)
+plot(selmtd) ## restrict x lab
+
+## confidence intervals?
+```
+
+## Next period
+
+1. fix warnings from R
+2. add guard clauses e.g. give warning message or stop the function when target too small or too large
+3. prepare vignette
+4. test functions
+
+
+
+
