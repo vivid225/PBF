@@ -2,12 +2,15 @@
 #'
 #' Obtain the operating characteristics of the BOIN design for single agent trials by simulating trials.
 #'
-#' @usage get.oc.pbf(target,n.cohort,cohortsize,skeleton,n.trial,
+#' @usage get.oc.pbf(target,n.cohort,cohortsize,titration,skeleton,n.trial,
 #'                      risk.cutoff,earlyterm,start)
 #'
 #' @param target the target DLT rate
-#' @param ncohort the total number of cohorts
+#' @param n.cohort the total number of cohorts
 #' @param cohortsize the cohort size
+#' @param titration default is TRUE. Set \code{titration=TRUE} to perform dose
+#'                  escalation with cohort size = 1 to accelerate dose escalation
+#'                  at the beginning of the trial.
 #' @param skeleton a vector containing the true toxicity probabilities of the
 #'                 investigational dose levels.
 #' @param earlyterm the early termination parameter.
@@ -34,12 +37,6 @@
 #'
 #' @note TBD
 #'
-#' @author
-#'
-#' @references
-#'
-#' @seealso
-#'
 #'
 #' @examples
 #'
@@ -48,154 +45,213 @@
 #'                      risk.cutoff=0.8,earlyterm=TRUE,start=1)
 #'
 #' summary(oc) # summarize design operating characteristics
-#' plot(oc)   # plot flowchart of the BOIN design and design operating characteristics, including
-#'            # selection percentage, number of patients, and observed toxicities at each dose
-#'
+#' plot(oc)
 #'
 #' @export
 #'
 
-fit.isoreg <- function(iso, x0)
-{
-  if(length(x0)==1){
-    return(iso$yf)
+get.oc.pbf = function(target,n.cohort,cohortsize,titration=TRUE,
+                      skeleton,n.trial=1000,
+                      risk.cutoff=0.8,earlyterm=TRUE,start=1){
+
+  fit.isoreg <- function(iso, x0)
+  {
+    if(length(x0)==1){
+      return(iso$yf)
+    }
+    o = iso$o
+    if (is.null(o))
+      o = 1:length(x0)
+    x = unique(iso$x[o])
+    y = iso$yf
+    ind = cut(x0, breaks = x, labels = FALSE, include.lowest = TRUE)
+    min.x <- min(x)
+    max.x <- max(x)
+    adjusted.knots <- iso$iKnots[c(which(iso$yf[iso$iKnots] > 0))]
+    fits = sapply(seq(along = x0), function(i) {
+      j = ind[i]
+
+      # Find the upper and lower parts of the step
+      upper.step.n <- min(which(adjusted.knots > j))
+      upper.step <- adjusted.knots[upper.step.n]
+      lower.step <- ifelse(upper.step.n==1, 1, adjusted.knots[upper.step.n -1] )
+
+      # Perform a liner interpolation between the start and end of the step
+      denom <- x[upper.step] - x[lower.step]
+      denom <- ifelse(denom == 0, 1, denom)
+      val <- y[lower.step] + (y[upper.step] - y[lower.step]) * (x0[i] - x[lower.step]) / (denom)
+    })
+    fits
   }
-  o = iso$o
-  if (is.null(o))
-    o = 1:length(x0)
-  x = unique(iso$x[o])
-  y = iso$yf
-  ind = cut(x0, breaks = x, labels = FALSE, include.lowest = TRUE)
-  min.x <- min(x)
-  max.x <- max(x)
-  adjusted.knots <- iso$iKnots[c(which(iso$yf[iso$iKnots] > 0))]
-  fits = sapply(seq(along = x0), function(i) {
-    j = ind[i]
 
-    # Find the upper and lower parts of the step
-    upper.step.n <- min(which(adjusted.knots > j))
-    upper.step <- adjusted.knots[upper.step.n]
-    lower.step <- ifelse(upper.step.n==1, 1, adjusted.knots[upper.step.n -1] )
-
-    # Perform a liner interpolation between the start and end of the step
-    denom <- x[upper.step] - x[lower.step]
-    denom <- ifelse(denom == 0, 1, denom)
-    val <- y[lower.step] + (y[upper.step] - y[lower.step]) * (x0[i] - x[lower.step]) / (denom)
-  })
-  fits
-}
-
-scene <- function(target,K){
-  MTD <- sample(K,1)
-  M <- rbeta(1,max(K-MTD,0.5),1)
-  B <- target+(1-target)*M
-  skeleton <- rep(0,K)
-  if(MTD == 1){
-    skeleton[2:K] <- sort(runif(K-1,target,B))
-    skeleton[1] <- runif(1,max(0,2*target-skeleton[2]),skeleton[2])
-  }else if(MTD == K){
-    skeleton[1:(K-1)] <- sort(runif(K-1,0,target))
-    skeleton[K] <- runif(1,skeleton[K-1],min(2*target-skeleton[K-1],B))
-  }else{
-    skeleton[1:(MTD-1)] <- sort(runif(MTD-1,0,target))
-    skeleton[(MTD+1):K] <- sort(runif(K-MTD,target,B))
-    d <- min(target-skeleton[MTD-1],skeleton[MTD+1]-target)
-    skeleton[MTD] <- runif(1,target-d,target+d)
-  }
-  round(skeleton,digits = 2)
-}
-
-iso <- function(p1,p0,phi){
-  l <- which(p0>0)
-  p <- p1[l]/p0[l]
-  if(sum(p)==0){
-    return(max(l))
-  }
-  iso.model <- isoreg(p)
-  p.iso <- fit.isoreg(iso.model,1:length(l))
-  d <- abs(p.iso-phi)
-  l[max(which(d==min(d)))]
-}
-
-cont <- function(x,n.level){
-  ret <- rep(0,n.level)
-  for(i in 1:n.level){
-    ret[i] <- sum(x==i)
-  }
-  ret
-}
-
-## Simulate trials, with early termination rules
-trial_early <- function(target,lower,upper,elim.lower,elim.upper,skeleton,start=1,
-                        n.trial,n.cohort,cohortsize,risk.cutoff=0.8)
-{
-  n <- n.cohort*cohortsize
-  true.mtd <- which.min(abs(skeleton-target))
-  K <- length(skeleton)
-  mtd <- rep(NA,n.trial)
-  num.p <- matrix(nrow = n.trial,ncol = K)
-  num.tox <- matrix(nrow = n.trial,ncol = K)
-  risk.over <- rep(NA,n.trial)
-  risk.under <- rep(NA,n.trial)
-  early <- rep(0,n.trial)
-  for(count in 1:n.trial){
-    if(start==1){
-      start.dose <- 1
-    }else if(start==2){
-      start.dose <- sample(c(ceiling(K/2),ceiling(K/2+0.5)),1)
+  scene <- function(target,K){
+    MTD <- sample(K,1)
+    M <- rbeta(1,max(K-MTD,0.5),1)
+    B <- target+(1-target)*M
+    skeleton <- rep(0,K)
+    if(MTD == 1){
+      skeleton[2:K] <- sort(runif(K-1,target,B))
+      skeleton[1] <- runif(1,max(0,2*target-skeleton[2]),skeleton[2])
+    }else if(MTD == K){
+      skeleton[1:(K-1)] <- sort(runif(K-1,0,target))
+      skeleton[K] <- runif(1,skeleton[K-1],min(2*target-skeleton[K-1],B))
     }else{
-      start.dose <- sample(1:K,1)
+      skeleton[1:(MTD-1)] <- sort(runif(MTD-1,0,target))
+      skeleton[(MTD+1):K] <- sort(runif(K-MTD,target,B))
+      d <- min(target-skeleton[MTD-1],skeleton[MTD+1]-target)
+      skeleton[MTD] <- runif(1,target-d,target+d)
     }
-    dose.treated <- rep(0,K)
-    dose.dlt <- rep(0,K)
-    dose.next <- start.dose
-    dose.elim <- rep(1,K)
+    round(skeleton,digits = 2)
+  }
 
-    for(i in 1:n.cohort){
-      dose.treated[dose.next] <- dose.treated[dose.next]+1
-      dlt <- rbinom(1,cohortsize,prob = skeleton[dose.next])
-      dose.dlt[dose.next] <- dose.dlt[dose.next]+dlt
-      if(dose.dlt[dose.next]<=elim.lower[dose.treated[dose.next]]){
-        dose.elim[1:dose.next] <- 0
-        if(sum(dose.elim)==0){
-          early[count] <- 1
-          mtd[count] <- dose.next
-          break
-        }
+  iso <- function(p1,p0,phi){
+    l <- which(p0>0)
+    p <- p1[l]/p0[l]
+    if(sum(p)==0){
+      return(max(l))
+    }
+    iso.model <- isoreg(p)
+    p.iso <- fit.isoreg(iso.model,1:length(l))
+    d <- abs(p.iso-phi)
+    l[max(which(d==min(d)))]
+  }
+
+  cont <- function(x,n.level){
+    ret <- rep(0,n.level)
+    for(i in 1:n.level){
+      ret[i] <- sum(x==i)
+    }
+    ret
+  }
+
+  ## Simulate trials, with early termination rules
+  trial_early <- function(target,lower,upper,elim.lower,elim.upper,skeleton,start=1,
+                          n.trial,n.cohort,cohortsize,risk.cutoff=0.8)
+  {
+    n <- n.cohort*cohortsize
+    true.mtd <- which.min(abs(skeleton-target))
+    K <- length(skeleton)
+    mtd <- rep(NA,n.trial)
+    num.p <- matrix(nrow = n.trial,ncol = K)
+    num.tox <- matrix(nrow = n.trial,ncol = K)
+    risk.over <- rep(NA,n.trial)
+    risk.under <- rep(NA,n.trial)
+    early <- rep(0,n.trial)
+    for(count in 1:n.trial){
+      if(start==1){
+        start.dose <- 1
+      }else if(start==2){
+        start.dose <- sample(c(ceiling(K/2),ceiling(K/2+0.5)),1)
+      }else{
+        start.dose <- sample(1:K,1)
       }
-      if(dose.dlt[dose.next]>=elim.upper[dose.treated[dose.next]]){
-        dose.elim[dose.next:K] <- 0
-        if(sum(dose.elim)==0){
-          early[count] <- 1
-          mtd[count] <- dose.next
-          break
-        }
-      }
-      if(dose.dlt[dose.next]<=lower[dose.treated[dose.next]]){
-        if(dose.next < K){
-          if(dose.elim[dose.next+1]==1){
-            dose.next <- dose.next+1
+      dose.treated <- rep(0,K)
+      dose.dlt <- rep(0,K)
+      dose.next <- start.dose
+      dose.elim <- rep(1,K)
+
+      for(i in 1:n.cohort){
+        dose.treated[dose.next] <- dose.treated[dose.next]+1
+        dlt <- rbinom(1,cohortsize,prob = skeleton[dose.next])
+        dose.dlt[dose.next] <- dose.dlt[dose.next]+dlt
+        if(dose.dlt[dose.next]<=elim.lower[dose.treated[dose.next]]){
+          dose.elim[1:dose.next] <- 0
+          if(sum(dose.elim)==0){
+            early[count] <- 1
+            mtd[count] <- dose.next
+            break
           }
         }
-      }else if(dose.dlt[dose.next]>=upper[dose.treated[dose.next]]){
-        if(dose.next > 1){
-          if(dose.elim[dose.next-1]==1){
-            dose.next <- dose.next-1
+        if(dose.dlt[dose.next]>=elim.upper[dose.treated[dose.next]]){
+          dose.elim[dose.next:K] <- 0
+          if(sum(dose.elim)==0){
+            early[count] <- 1
+            mtd[count] <- dose.next
+            break
+          }
+        }
+        if(dose.dlt[dose.next]<=lower[dose.treated[dose.next]]){
+          if(dose.next < K){
+            if(dose.elim[dose.next+1]==1){
+              dose.next <- dose.next+1
+            }
+          }
+        }else if(dose.dlt[dose.next]>=upper[dose.treated[dose.next]]){
+          if(dose.next > 1){
+            if(dose.elim[dose.next-1]==1){
+              dose.next <- dose.next-1
+            }
+          }
+        }
+      }
+      if(is.na(mtd[count])){
+        #mtd[count] <- select.mtd(target = target,npts = dose.treated*cohortsize,ntox = dose.dlt)$MTD
+        mtd[count] <- iso(dose.dlt,dose.treated*cohortsize,phi=target)
+      }
+      if(is.na(mtd[count])){
+        next
+      }else{
+        num.p[count,] <- dose.treated*cohortsize
+        num.tox[count,] <- dose.dlt
+        risk.over[count] <- 0
+        risk.under[count] <- 0
+        if(true.mtd==1){
+          if(sum(dose.treated[2:K])*cohortsize>risk.cutoff*n){
+            risk.over[count] <- 1
+          }
+        }else if(true.mtd==K){
+          if(sum(dose.treated[1:(K-1)])*cohortsize>risk.cutoff*n){
+            risk.under[count] <- 1
+          }
+        }else{
+          if(sum(dose.treated[1:(true.mtd-1)])*cohortsize>risk.cutoff*n){
+            risk.under[count] <- 1
+          }else if(sum(dose.treated[(true.mtd+1):K])*cohortsize>risk.cutoff*n){
+            risk.over[count] <- 1
           }
         }
       }
     }
-    if(is.na(mtd[count])){
-      #mtd[count] <- select.mtd(target = target,npts = dose.treated*cohortsize,ntox = dose.dlt)$MTD
+    return(list(num.p=num.p,num.tox=num.tox,num.mtd=mtd,early=early,
+                risk.over=risk.over,risk.under=risk.under))
+  }
+
+  ## Simulate trials, without early termination rules
+  trial <- function(target,lower,upper,skeleton,risk.cutoff=0.8,
+                    n.trial,n.cohort,cohortsize)
+  {
+    n <- n.cohort*cohortsize
+    true.mtd <- which.min(abs(skeleton-target))
+    K <- length(skeleton)
+    start.dose <- 1
+    mtd <- rep(0,n.trial)
+    num.p <- rep(0,K)
+    num.tox <- rep(0,K)
+    risk.over <- rep(0,n.trial)
+    risk.under <- rep(0,n.trial)
+    for(count in 1:n.trial){
+      dose.treated <- rep(0,K)
+      dose.dlt <- rep(0,K)
+      dose.next <- start.dose
+
+      for(i in 1:n.cohort){
+        dose.treated[dose.next] <- dose.treated[dose.next]+1
+        dlt <- rbinom(1,cohortsize,prob = skeleton[dose.next])
+        dose.dlt[dose.next] <- dose.dlt[dose.next]+dlt
+        if(dose.dlt[dose.next]<=lower[dose.treated[dose.next]]){
+          dose.next <- dose.next+1
+        }else if(dose.dlt[dose.next]>=upper[dose.treated[dose.next]]){
+          dose.next <- dose.next-1
+        }
+        if(dose.next<1){
+          dose.next <- 1
+        }else if(dose.next>length(skeleton)){
+          dose.next <- length(skeleton)
+        }
+      }
       mtd[count] <- iso(dose.dlt,dose.treated*cohortsize,phi=target)
-    }
-    if(is.na(mtd[count])){
-      next
-    }else{
-      num.p[count,] <- dose.treated*cohortsize
-      num.tox[count,] <- dose.dlt
-      risk.over[count] <- 0
-      risk.under[count] <- 0
+      num.p <- num.p+dose.treated*cohortsize
+      num.tox <- num.tox+dose.dlt
       if(true.mtd==1){
         if(sum(dose.treated[2:K])*cohortsize>risk.cutoff*n){
           risk.over[count] <- 1
@@ -212,71 +268,12 @@ trial_early <- function(target,lower,upper,elim.lower,elim.upper,skeleton,start=
         }
       }
     }
+    return(list(num.p=num.p,num.tox=num.tox,num.mtd=mtd,
+                risk.over=risk.over,risk.under=risk.under))
   }
-  return(list(num.p=num.p,num.tox=num.tox,num.mtd=mtd,early=early,
-              risk.over=risk.over,risk.under=risk.under))
-}
-
-## Simulate trials, without early termination rules
-trial <- function(target,lower,upper,skeleton,risk.cutoff=0.8,
-                  n.trial,n.cohort,cohortsize)
-{
-  n <- n.cohort*cohortsize
-  true.mtd <- which.min(abs(skeleton-target))
-  K <- length(skeleton)
-  start.dose <- 1
-  mtd <- rep(0,n.trial)
-  num.p <- rep(0,K)
-  num.tox <- rep(0,K)
-  risk.over <- rep(0,n.trial)
-  risk.under <- rep(0,n.trial)
-  for(count in 1:n.trial){
-    dose.treated <- rep(0,K)
-    dose.dlt <- rep(0,K)
-    dose.next <- start.dose
-
-    for(i in 1:n.cohort){
-      dose.treated[dose.next] <- dose.treated[dose.next]+1
-      dlt <- rbinom(1,cohortsize,prob = skeleton[dose.next])
-      dose.dlt[dose.next] <- dose.dlt[dose.next]+dlt
-      if(dose.dlt[dose.next]<=lower[dose.treated[dose.next]]){
-        dose.next <- dose.next+1
-      }else if(dose.dlt[dose.next]>=upper[dose.treated[dose.next]]){
-        dose.next <- dose.next-1
-      }
-      if(dose.next<1){
-        dose.next <- 1
-      }else if(dose.next>length(skeleton)){
-        dose.next <- length(skeleton)
-      }
-    }
-    mtd[count] <- iso(dose.dlt,dose.treated*cohortsize,phi=target)
-    num.p <- num.p+dose.treated*cohortsize
-    num.tox <- num.tox+dose.dlt
-    if(true.mtd==1){
-      if(sum(dose.treated[2:K])*cohortsize>risk.cutoff*n){
-        risk.over[count] <- 1
-      }
-    }else if(true.mtd==K){
-      if(sum(dose.treated[1:(K-1)])*cohortsize>risk.cutoff*n){
-        risk.under[count] <- 1
-      }
-    }else{
-      if(sum(dose.treated[1:(true.mtd-1)])*cohortsize>risk.cutoff*n){
-        risk.under[count] <- 1
-      }else if(sum(dose.treated[(true.mtd+1):K])*cohortsize>risk.cutoff*n){
-        risk.over[count] <- 1
-      }
-    }
-  }
-  return(list(num.p=num.p,num.tox=num.tox,num.mtd=mtd,
-              risk.over=risk.over,risk.under=risk.under))
-}
 
 
-get.oc.pbf = function(target,n.cohort,cohortsize,skeleton,n.trial=1000,
-                      risk.cutoff=0.8,earlyterm=TRUE,start=1){
-  # lower,upper,skeleton,n.trial=1000,risk.cutoff=0.8
+  ## get.oc.pbf function starts -----
   phi <- target
   if (cohortsize > 1) {
     res = get.boundary.pbf(target=target,n.cohort=n.cohort,cohortsize = cohortsize)$out.boundary
@@ -312,7 +309,7 @@ get.oc.pbf = function(target,n.cohort,cohortsize,skeleton,n.trial=1000,
   return(out)
 
 }
-octest <- get.oc.pbf(target=0.3,n.cohort=10,cohortsize=3,skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
-                     risk.cutoff=0.8,earlyterm=TRUE,start=1)
-summary(octest)
+# octest <- get.oc.pbf(target=0.3,n.cohort=10,cohortsize=3,skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
+#                      risk.cutoff=0.8,earlyterm=TRUE,start=1)
+# summary(octest)
 

@@ -48,7 +48,6 @@ selmtd <- select.mtd.pbf(target = 0.3, n.pts=n, n.tox=y)
 summary(selmtd)
 plot(selmtd) ## restrict x lab
 
-## confidence intervals?
 ```
 
 ## Next period
