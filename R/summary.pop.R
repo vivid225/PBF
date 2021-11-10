@@ -11,15 +11,10 @@
 #'
 #' @return \code{summary()} prints the objects returned by other functions.
 #'
-#' @author
-#'
-#' @examples
-#'
-#'
 #'
 #' @export
 
-summary.pbf<- function (object, ...) {
+summary.pop<- function (object, ...) {
 
   ## get.boundary -----
   if (!is.null(object$out.boundary)) {

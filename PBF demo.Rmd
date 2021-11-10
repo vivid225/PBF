@@ -1,5 +1,5 @@
 ---
-title: "PBF demo"
+title: "PoP demo"
 author: "Xinying Fang"
 date: "10/27/2021"
 output: html_document
@@ -10,14 +10,19 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-library(PBF)
+library(PoP)
+```
+
+```{r}
+knitr::include_graphics("/Users/rrrrrita/Documents/GitHub/PoP/inst/Flowchart/PoP_Flowchart.png")
+
 ```
 
 
-## get.boundary.pbf
+## get.boundary.pop
 
 ```{r}
-bd <-  get.boundary.pbf(n.cohort = 10, cohortsize = 3, target=0.3)
+bd <-  get.boundary.pop(n.cohort = 10, cohortsize = 3, target=0.3)
 summary(bd)
 # plot(bd)
 ```
@@ -29,33 +34,27 @@ print(bd$out.boundary)##C_e, C_d; E
 ```
 
 
-## get.oc.pdf
+## get.oc.pop
 
 ```{r}
-oc <- get.oc.pbf(target=0.3,n.cohort=10,cohortsize=3,skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,risk.cutoff=0.8,earlyterm=TRUE,start=1) ##specify the dose to start
-## add titration as default option
+oc <- get.oc.pop(target=0.3,n.cohort=10,cohortsize=3,titration=FALSE,
+                 skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,risk.cutoff=0.8,earlyterm=TRUE,start=1) 
+## specify the dose to start
 
 summary(oc) # summarize design operating characteristics
 plot(oc)
 ```
 
-## select.mtd.pbf
+## select.mtd.pop
 
 ```{r}
 n <- c(3, 3, 15, 9, 0) ## last column with no data points
 y <- c(0, 0, 4, 4, 0)
-selmtd <- select.mtd.pbf(target = 0.3, n.pts=n, n.tox=y)
+selmtd <- select.mtd.pop(target = 0.3, n.pts=n, n.tox=y)
 summary(selmtd)
 plot(selmtd) ## restrict x lab
 
 ```
-
-## Next period
-
-1. fix warnings from R
-2. add guard clauses e.g. give warning message or stop the function when target too small or too large
-3. prepare vignette
-4. test functions
 
 
 

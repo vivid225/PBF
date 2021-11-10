@@ -11,14 +11,11 @@
 #'
 #' @return \code{print()} prints the objects returned by other functions.
 #'
-#' @author
-#'
-#' @examples
 #'
 #'
 #'
 #' @export
 
-print.pbf<-function(x,...){
+print.pop<-function(x,...){
   print.default(x)
 }

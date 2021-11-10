@@ -1,8 +1,8 @@
 #' Generate operating characteristics for single agent trials
 #'
-#' Obtain the operating characteristics of the BOIN design for single agent trials by simulating trials.
+#' Obtain the operating characteristics of the PoP design for single agent trials by simulating trials.
 #'
-#' @usage get.oc.pbf(target,n.cohort,cohortsize,titration,skeleton,n.trial,
+#' @usage get.oc.pop(target,n.cohort,cohortsize,titration,skeleton,n.trial,
 #'                      risk.cutoff,earlyterm,start)
 #'
 #' @param target the target DLT rate
@@ -13,27 +13,26 @@
 #'                  at the beginning of the trial.
 #' @param skeleton a vector containing the true toxicity probabilities of the
 #'                 investigational dose levels.
-#' @param earlyterm the early termination parameter.
 #' @param risk.cutoff the cutoff to eliminate an over/under toxic dose.
 #'                  We recommend the default value of (\code{risk.cutoff=0.8}) for general use.
 #' @param n.trial the total number of trials to be simulated
-#' @param seed the random seed for simulation
+#' @param earlyterm the early termination parameter.
+#' @param start specify the starting dose level. Default value is 1.
 #'
 #' @import Iso
 #'
 #' @details TBD
 #'
-#' @return \code{get.oc()} returns the operating characteristics of the PBF design as a list,
+#' @return \code{get.oc.pop()} returns the operating characteristics of the PoP design as a list,
 #'        including:
-#'        (1) selection percentage at each dose level (\code{$selpercent}),
-#'        (2) the number of patients treated at each dose level (\code{$npatients}),
-#'        (3) the number of toxicities observed at each dose level (\code{$ntox}),
-#'        (4) the average number of toxicities (\code{$totaltox}),
-#'        (5) the average number of patients (\code{$totaln}),
-#'        (6) the percentage of early stopping without selecting the MTD (\code{$percentstop}),
-#'        (7) risk of overdosing 60\% or more of patients (\code{$overdose60}),
-#'        (8) risk of overdosing 80\% or more of patients (\code{$overdose80}),
-#'        (9) data.frame (\code{$simu.setup}) containing simulation parameters, such as target, p.true, etc.
+#'        (1) selection percentage at each dose level (\code{$sel.pct}),
+#'        (2) the number of patients treated at each dose level (\code{$num.p}),
+#'        (3) the number of toxicities observed at each dose level (\code{$num.tox}),
+#'        (4) the average number of toxicities,
+#'        (5) the average number of patients,
+#'        (6) the percentage of early stopping without selecting the MTD (\code{$early}),
+#'        (7) risk of underdosing 80\% or more of patients (\code{$risk.under}),
+#'        (8) risk of overdosing 80\% or more of patients (\code{$risk.over})
 #'
 #' @note TBD
 #'
@@ -41,7 +40,8 @@
 #' @examples
 #'
 #' ## get the operating characteristics for BOIN single agent trial
-#' oc <- get.oc.pbf(target=0.3,n.cohort=10,cohortsize=3,skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
+#' oc <- get.oc.pop(target=0.3,n.cohort=10,cohortsize=3,titration=TRUE,
+#'                  skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
 #'                      risk.cutoff=0.8,earlyterm=TRUE,start=1)
 #'
 #' summary(oc) # summarize design operating characteristics
@@ -50,7 +50,7 @@
 #' @export
 #'
 
-get.oc.pbf = function(target,n.cohort,cohortsize,titration=TRUE,
+get.oc.pop = function(target,n.cohort,cohortsize,titration=TRUE,
                       skeleton,n.trial=1000,
                       risk.cutoff=0.8,earlyterm=TRUE,start=1){
 
@@ -124,6 +124,125 @@ get.oc.pbf = function(target,n.cohort,cohortsize,titration=TRUE,
     ret
   }
 
+  ## Titration
+  trial_titration <- function(target,lower,upper,elim.lower,elim.upper,skeleton,start=1,
+                              earlyterm,n.trial,n.cohort,cohortsize,risk.cutoff=0.8)
+  {
+    true.mtd <- which.min(abs(skeleton-target))
+    K <- length(skeleton)
+    mtd <- rep(NA,n.trial)
+    num.p <- num.tox <- matrix(nrow = n.trial,ncol = K)
+    risk.over <- rep(NA,n.trial)
+    risk.under <- rep(NA,n.trial)
+    early <- rep(0,n.trial)
+
+    for(count in 1:n.trial){
+      # Starting dose
+      start.dose <- start
+
+      dose.treated <- rep(0,K)
+      dose.dlt <- rep(0,K)
+      dose.next <- 1
+      dose.elim <- rep(1,K)
+
+      n <- n.cohort*cohortsize
+      s <- n
+
+      while(s>0){
+        dose.treated[dose.next] <- dose.treated[dose.next]+1
+        dlt <- rbinom(1,1,prob = skeleton[dose.next])
+        dose.dlt[dose.next] <- dose.dlt[dose.next]+dlt
+        s <- s-1
+
+        if(dlt==1){
+          if(dose.dlt[dose.next]<=lower[dose.treated[dose.next]]){ # if observed dlt <= boundary, escalate
+            dose.next <- min(K,dose.next+1)
+          }else if(dose.dlt[dose.next]>=upper[dose.treated[dose.next]]){
+            dose.next <- max(dose.next-1,1)
+          }
+          break
+        }else{
+          dose.next <- min(K,dose.next+1)
+        }
+      }
+
+      while(s>0){
+        s.tr <- min(s,cohortsize)
+        dose.treated[dose.next] <- dose.treated[dose.next]+s.tr
+        dlt <- rbinom(1,s.tr,prob = skeleton[dose.next])
+        dose.dlt[dose.next] <- dose.dlt[dose.next]+dlt
+        s <- s-s.tr
+
+        ## Exclusion decision
+        if (earlyterm) {
+          if(dose.dlt[dose.next]<=elim.lower[dose.treated[dose.next]]){
+            dose.elim[1:dose.next] <- 0
+            if(sum(dose.elim)==0){
+              early[count] <- 1
+              mtd[count] <- dose.next
+              break
+            }
+          }
+          if(dose.dlt[dose.next]>=elim.upper[dose.treated[dose.next]]){
+            dose.elim[dose.next:K] <- 0
+            if(sum(dose.elim)==0){
+              early[count] <- 1
+              mtd[count] <- dose.next
+              break
+            }
+          }
+        }
+
+
+        ## Transition decision
+        if(dose.dlt[dose.next]<=lower[dose.treated[dose.next]]){
+          if(dose.next < K){
+            if(dose.elim[dose.next+1]==1){
+              dose.next <- dose.next+1
+            }
+          }
+        }else if(dose.dlt[dose.next]>=upper[dose.treated[dose.next]]){
+          if(dose.next > 1){
+            if(dose.elim[dose.next-1]==1){
+              dose.next <- dose.next-1
+            }
+          }
+        }
+      }
+
+
+      if(is.na(mtd[count])){
+        #mtd[count] <- select.mtd(target = target,npts = dose.treated*cohortsize,ntox = dose.dlt)$MTD
+        mtd[count] <- iso(dose.dlt,dose.treated,phi=target)
+      }
+      if(is.na(mtd[count])){
+        next
+      }else{
+        num.p[count,] <- dose.treated
+        num.tox[count,] <- dose.dlt
+        risk.over[count] <- 0
+        risk.under[count] <- 0
+        if(true.mtd==1){
+          if(sum(dose.treated[2:K])>risk.cutoff*n){
+            risk.over[count] <- 1
+          }
+        }else if(true.mtd==K){
+          if(sum(dose.treated[1:(K-1)])>risk.cutoff*n){
+            risk.under[count] <- 1
+          }
+        }else{
+          if(sum(dose.treated[1:(true.mtd-1)])>risk.cutoff*n){
+            risk.under[count] <- 1
+          }else if(sum(dose.treated[(true.mtd+1):K])>risk.cutoff*n){
+            risk.over[count] <- 1
+          }
+        }
+      }
+    }
+    return(list(num.p=num.p,num.mtd=mtd,early=early,num.tox=num.tox,
+                risk.over=risk.over,risk.under=risk.under))
+  }
+
   ## Simulate trials, with early termination rules
   trial_early <- function(target,lower,upper,elim.lower,elim.upper,skeleton,start=1,
                           n.trial,n.cohort,cohortsize,risk.cutoff=0.8)
@@ -138,13 +257,14 @@ get.oc.pbf = function(target,n.cohort,cohortsize,titration=TRUE,
     risk.under <- rep(NA,n.trial)
     early <- rep(0,n.trial)
     for(count in 1:n.trial){
-      if(start==1){
-        start.dose <- 1
-      }else if(start==2){
-        start.dose <- sample(c(ceiling(K/2),ceiling(K/2+0.5)),1)
-      }else{
-        start.dose <- sample(1:K,1)
-      }
+      # if(start==1){
+      #   start.dose <- 1
+      # }else if(start==2){
+      #   start.dose <- sample(c(ceiling(K/2),ceiling(K/2+0.5)),1)
+      # }else{
+      #   start.dose <- sample(1:K,1)
+      # }
+      start.dose <- start
       dose.treated <- rep(0,K)
       dose.dlt <- rep(0,K)
       dose.next <- start.dose
@@ -273,22 +393,35 @@ get.oc.pbf = function(target,n.cohort,cohortsize,titration=TRUE,
   }
 
 
-  ## get.oc.pbf function starts -----
+  ## get.oc.pop function starts -----
   phi <- target
-  if (cohortsize > 1) {
-    res = get.boundary.pbf(target=target,n.cohort=n.cohort,cohortsize = cohortsize)$out.boundary
+  if (titration){
+    res = get.boundary.pop(target=target,n.cohort=n.cohort,cohortsize = cohortsize)$out.full.boundary
+  } else {
+    if (cohortsize > 1) {
+      res = get.boundary.pop(target=target,n.cohort=n.cohort,cohortsize = cohortsize)$out.boundary
+    }
+    else {
+      res = get.boundary.pop(target=target,n.cohort=n.cohort,cohortsize = cohortsize)$out.full.boundary
+    }
   }
-  else {
-    res = get.boundary.pbf(target=target,n.cohort=n.cohort,cohortsize = cohortsize)$out.full.boundary
-  }
+
 
   res[which(is.na(res))] <- -Inf
 
   if (earlyterm){
-    out <- trial_early(target=target,lower=res[2,],upper=res[3,],
-                       elim.lower=res[4,],elim.upper=res[5,],
-                       skeleton=skeleton,start=start,n.trial=n.trial,
-                       n.cohort = n.cohort,cohortsize=cohortsize)
+    if (titration){
+      out <- trial_titration(target=target,lower=res[2,],upper=res[3,],
+                             elim.lower=res[4,],elim.upper=res[5,],
+                             skeleton=skeleton,start=start,earlyterm=TRUE,
+                             n.trial=n.trial,
+                             n.cohort = n.cohort,cohortsize=cohortsize)
+    } else {
+      out <- trial_early(target=target,lower=res[2,],upper=res[3,],
+                         elim.lower=res[4,],elim.upper=res[5,],
+                         skeleton=skeleton,start=start,n.trial=n.trial,
+                         n.cohort = n.cohort,cohortsize=cohortsize)
+    }
     out$sel.pct <- cont(x = out$num.mtd, n.level = length(skeleton))/n.trial
     out$num.p <- colSums(out$num.p)/n.trial
     out$num.tox <- colSums(out$num.tox)/n.trial
@@ -297,19 +430,29 @@ get.oc.pbf = function(target,n.cohort,cohortsize,titration=TRUE,
     out$risk.under <- mean(out$risk.under)
 
   } else {
-    out <- trial(target=target,lower=res[2,],upper=res[3,],skeleton=skeleton,start=start,
-                 n.trial = n.trial,n.cohort = n.cohort,cohortsize=cohortsize)
+
+    if (titration){
+      out <- trial_titration(target=target,lower=res[2,],upper=res[3,],
+                             elim.lower=res[4,],elim.upper=res[5,],
+                             skeleton=skeleton,start=start,earlyterm=TRUE,
+                             n.trial=n.trial,
+                             n.cohort = n.cohort,cohortsize=cohortsize)
+    } else {
+      out <- trial(target=target,lower=res[2,],upper=res[3,],skeleton=skeleton,start=start,
+                   n.trial = n.trial,n.cohort = n.cohort,cohortsize=cohortsize)
+    }
+
     out$sel.pct <- cont(x = out$num.mtd, n.level = length(skeleton))/n.trial
     out$num.p <- out$num.p/n.trial
     out$num.tox <- out$num.tox/n.trial
     out$risk.over <- mean(out$risk.over)
     out$risk.under <- mean(out$risk.under)
   }
-  class(out)<-"pbf"
+  class(out)<-"pop"
   return(out)
 
 }
-# octest <- get.oc.pbf(target=0.3,n.cohort=10,cohortsize=3,skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
+# octest <- get.oc.pop(target=0.3,n.cohort=10,cohortsize=3,skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
 #                      risk.cutoff=0.8,earlyterm=TRUE,start=1)
 # summary(octest)
 

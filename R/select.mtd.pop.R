@@ -3,7 +3,7 @@
 #'
 #' Select the maximum tolerated dose (MTD) when the single-agent trial is completed
 #'
-#' @usage select.mtd.pdf(target, n.pts, n.tox)
+#' @usage select.mtd.pop(target, n.pts, n.tox)
 #'
 #' @param target the target DLT rate
 #' @param n.pts a vector containing the number of patients treated at each dose level
@@ -12,18 +12,8 @@
 #'
 #' @details TBD
 #'
-#' @return  \code{select.mtd.pbf()} returns (1) selected MTD (\code{$MTD}),
+#' @return  \code{select.mtd.pop()} returns (1) selected MTD (\code{$MTD}),
 #' (2) isotonic estimate of the DLT probablity at each dose and associated
-#'
-#'
-#' @note
-#'
-#' @author
-#'
-#' @references
-#'
-#'
-#' @seealso
 #'
 #'
 #' @examples
@@ -31,14 +21,14 @@
 #' ### select the MTD for BOIN single agent trial
 #' n <- c(3, 3, 15, 9, 0)
 #' y <- c(0, 0, 4, 4, 0)
-#' selmtd <- select.mtd.pbf(target=0.3,n.pts=n, n.tox=y)
+#' selmtd <- select.mtd.pop(target=0.3,n.pts=n, n.tox=y)
 #' summary(selmtd)
 #' plot(selmtd)
 #'
 #' @export
 
 
-select.mtd.pbf <- function(target, n.tox, n.pts){
+select.mtd.pop <- function(target, n.tox, n.pts){
 
   fit.isoreg <- function(iso, x0)
   {
@@ -83,12 +73,6 @@ select.mtd.pbf <- function(target, n.tox, n.pts){
   out <- list(target = target,
               MTD = mtd,
               p_est = p_est)
-  class(out)<-"pbf"
+  class(out)<-"pop"
   return(out)
 }
-#
-# n <- c(3, 3, 15, 9, 0)
-# y <- c(0, 0, 4, 4, 0)
-# selmtd <- select.mtd.pbf(target = 0.3, n.pts=n, n.tox=y)
-# summary(selmtd)
-# selmtd$p_est
