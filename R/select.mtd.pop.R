@@ -1,5 +1,5 @@
 #'
-#' Select the maximum tolerated dose (MTD) for single agent trials
+#' Maximum tolerated dose (MTD) selection for single-agent trials
 #'
 #' Select the maximum tolerated dose (MTD) when the single-agent trial is completed
 #'
@@ -10,17 +10,17 @@
 #' @param n.tox a vector containing the number of patients who experienced dose-limiting
 #'              toxicity at each dose level
 #'
-#' @details TBD
 #'
 #' @return  \code{select.mtd.pop()} returns (1) selected MTD (\code{$MTD}),
 #' (2) isotonic estimate of the DLT probablity at each dose and associated
 #'
+#' @references Brunk, H., Barlow, R. E., Bartholomew, D. J. & Bremner, J. M (1972, ISBN-13: 978-0471049708).
 #'
 #' @examples
 #'
-#' ### select the MTD for BOIN single agent trial
-#' n <- c(3, 3, 15, 9, 0)
-#' y <- c(0, 0, 4, 4, 0)
+#' ### select the MTD for PoP trial
+#' n <- c(4, 4, 16, 8, 0)
+#' y <- c(0, 0, 5, 5, 0)
 #' selmtd <- select.mtd.pop(target=0.3,n.pts=n, n.tox=y)
 #' summary(selmtd)
 #' plot(selmtd)
@@ -28,7 +28,7 @@
 #' @export
 
 
-select.mtd.pop <- function(target, n.tox, n.pts){
+select.mtd.pop <- function(target, n.pts, n.tox){
 
   fit.isoreg <- function(iso, x0)
   {

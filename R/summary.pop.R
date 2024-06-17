@@ -1,5 +1,5 @@
 #'
-#' Generate descriptive summary for objects returned by other functions
+#' Generate descriptive summary for objects returned by other functions in PoPdesign
 #'
 #' Generate descriptive summary for objects returned by other functions.
 #'
@@ -7,14 +7,30 @@
 #' @param ... ignored arguments
 #'
 #' @import knitr
-#' @details \code{summary()} prints the objects returned by other functions.
 #'
 #' @return \code{summary()} prints the objects returned by other functions.
 #'
+#' @examples
+#' ## summarize the results returned by get.boundary.pop()
+#' bound <- get.boundary.pop(n.cohort = 10, cohortsize = 3, target=0.3,
+#'                           cutoff=exp(1), K=3,cutoff_e=exp(-1))
+#' summary(bound)
+#'
+#' ## summarize the results returned by get.oc.pop()
+#' oc <- get.oc.pop(target=0.3,n.cohort=10,cohortsize=3,titration=TRUE,
+#'                  cutoff=TRUE,cutoff_e=exp(-1),skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
+#'                  risk.cutoff=0.8,earlyterm=TRUE,start=1)
+#' summary(oc)
+#'
+#' ### summarize the results returned by select.mtd.pop()
+#' n <- c(3, 3, 15, 9, 0)
+#' y <- c(0, 0, 4, 4, 0)
+#' selmtd <- select.mtd.pop(target=0.3,n.pts=n, n.tox=y)
+#' summary(selmtd)
 #'
 #' @export
 
-summary.pop<- function (object, ...) {
+summary.pop<-  function (object, ...) {
 
   ## get.boundary -----
   if (!is.null(object$out.boundary)) {
@@ -57,8 +73,17 @@ summary.pop<- function (object, ...) {
     tbl <- data.frame(dose = 1:length(object$p_est),
                       dlt = round(object$p_est,2))
     colnames(tbl) <- c("Dose level", "Posterior DLT")
-    cat("The MTD is dose level ", object$MTD, "\n")
-    kable(tbl, "simple")
+    cat("The MTD is dose level ", object$MTD, "\n\n")
+    # print(tbl)
+    # kable(tbl, "simple")
+    cat("Dose    Posterior DLT             \n",
+        sep = "")
+    cat("Level     Estimate \n", sep = "")
+    for (i in 1:length(object$p_est)) {
+      cat(" ", i, "        ", as.character(round(object$p_est[i],2)),
+          "\n")
+    }
+
   }
 
 

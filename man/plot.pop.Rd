@@ -2,23 +2,20 @@
 % Please edit documentation in R/plot.pop.R
 \name{plot.pop}
 \alias{plot.pop}
-\title{Plot the flowchart and simulation results for BOIN designs}
+\title{Plot the flowchart and simulation results for PoP designs}
 \usage{
-plot(x)
+\method{plot}{pop}(x, ...)
 }
 \arguments{
 \item{x}{the object returned by other functions}
 
 \item{...}{ignored arguments}
-
-\item{name}{the name of the object to be plotted.
-User doesn't need to input this parameter.}
 }
 \value{
 \code{plot()} returns a figure or a series of figures depending on the object entered
 }
 \description{
-Plot the objects returned by other functions, including (1) flowchart of BOIN design;
+Plot the objects returned by other functions, including (1) flowchart of PoP design;
 (2) operating characteristics of the design, including selection percentage and the
 number of patients treated at each dose;
 (3) the estimate of toxicity probability for each dose and corresponding 95\% credible interval
