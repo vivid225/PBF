@@ -72,34 +72,61 @@ get.oc.pop = function(target,n.cohort,cohortsize,titration=TRUE,
 
   set.seed(seed)
 
-  fit.isoreg <- function(iso, x0)
-  {
-    if(length(x0)==1){
-      return(iso$yf)
+
+
+  iso.pop <- function(p1,p0){
+    l <- which(p0>0)
+    p <- (p1[l]+0.05)/(p0[l]+0.1)
+    p.var = (p1[l] + 0.05) * (p0[l] - p1[l] + 0.05)/((p0[l] +
+                                                        0.1)^2 * (p0[l] + 0.1 + 1))
+    p.iso <- pava(p, wt = 1/p.var)
+    p.iso = p.iso + (1:length(p.iso)) * 1e-10
+
+    ## eliminate dose based on posterior probability
+    elimi = rep(0, K)
+    for (i in 1:K) {
+      if (1 - pbeta(phi, p1[i] + 1, p0[i] - p1[i] + 1) > 0.95) {
+        elimi[i:K] = 1
+        break
+      }
     }
-    o = iso$o
-    if (is.null(o))
-      o = 1:length(x0)
-    x = unique(iso$x[o])
-    y = iso$yf
-    ind = cut(x0, breaks = x, labels = FALSE, include.lowest = TRUE)
-    min.x <- min(x)
-    max.x <- max(x)
-    adjusted.knots <- iso$iKnots[c(which(iso$yf[iso$iKnots] > 0))]
-    fits = sapply(seq(along = x0), function(i) {
-      j = ind[i]
+    m <- which(elimi!=1)
 
-      # Find the upper and lower parts of the step
-      upper.step.n <- min(which(adjusted.knots > j))
-      upper.step <- adjusted.knots[upper.step.n]
-      lower.step <- ifelse(upper.step.n==1, 1, adjusted.knots[upper.step.n -1] )
+    l <- l[m]
+    p.iso <- p.iso[m]
+    if(length(l)==0) {return(99)}
+    l[sort(abs(p.iso - phi), index.return = T)$ix[1]]
+  }
 
-      # Perform a liner interpolation between the start and end of the step
-      denom <- x[upper.step] - x[lower.step]
-      denom <- ifelse(denom == 0, 1, denom)
-      val <- y[lower.step] + (y[upper.step] - y[lower.step]) * (x0[i] - x[lower.step]) / (denom)
-    })
-    fits
+  pava <- function(x, wt = rep(1, length(x))) {
+    n <- length(x)
+    if (n <= 1)
+      return(x)
+    if (any(is.na(x)) || any(is.na(wt))) {
+      stop("Missing values in 'x' or 'wt' not allowed")
+    }
+    lvlsets <- (1:n)
+    repeat {
+      viol <- (as.vector(diff(x)) < 0)
+      if (!(any(viol)))
+        break
+      i <- min((1:(n - 1))[viol])
+      lvl1 <- lvlsets[i]
+      lvl2 <- lvlsets[i + 1]
+      ilvl <- (lvlsets == lvl1 | lvlsets == lvl2)
+      x[ilvl] <- sum(x[ilvl] * wt[ilvl])/sum(wt[ilvl])
+      lvlsets[ilvl] <- lvl1
+    }
+    x
+  }
+
+  cont <- function(x,n.level){
+    ret <- rep(0,n.level+1)
+    for(i in c(1:n.level)){
+      ret[i] <- mean(x==i,na.rm = T)
+    }
+    ret[n.level+1] <- mean(x==99,na.rm = T)
+    ret
   }
 
   scene <- function(target,K){
@@ -122,25 +149,6 @@ get.oc.pop = function(target,n.cohort,cohortsize,titration=TRUE,
     round(skeleton,digits = 2)
   }
 
-  iso <- function(p1,p0,phi){
-    l <- which(p0>0)
-    p <- p1[l]/p0[l]
-    if(sum(p)==0){
-      return(max(l))
-    }
-    iso.model <- isoreg(p)
-    p.iso <- fit.isoreg(iso.model,1:length(l))
-    d <- abs(p.iso-phi)
-    l[max(which(d==min(d)))]
-  }
-
-  cont <- function(x,n.level){
-    ret <- rep(0,n.level)
-    for(i in 1:n.level){
-      ret[i] <- sum(x==i)
-    }
-    ret
-  }
 
   ## Titration
   trial_titration <- function(target,lower,upper,elim.lower,elim.upper,skeleton,start=1,
@@ -229,11 +237,10 @@ get.oc.pop = function(target,n.cohort,cohortsize,titration=TRUE,
         }
       }
 
-
       if(is.na(mtd[count])){
-        #mtd[count] <- select.mtd(target = target,npts = dose.treated*cohortsize,ntox = dose.dlt)$MTD
-        mtd[count] <- iso(dose.dlt,dose.treated,phi=target)
+        mtd[count] <- iso.pop(dose.dlt,dose.treated)
       }
+
       if(is.na(mtd[count])){
         next
       }else{
@@ -324,9 +331,13 @@ get.oc.pop = function(target,n.cohort,cohortsize,titration=TRUE,
         }
       }
       if(is.na(mtd[count])){
-        #mtd[count] <- select.mtd(target = target,npts = dose.treated*cohortsize,ntox = dose.dlt)$MTD
-        mtd[count] <- iso(dose.dlt,dose.treated*cohortsize,phi=target)
+        mtd[count] <- iso.pop(dose.dlt,dose.treated)
       }
+
+      # if(is.na(mtd[count])){
+      #   #mtd[count] <- select.mtd(target = target,npts = dose.treated*cohortsize,ntox = dose.dlt)$MTD
+      #   mtd[count] <- iso(dose.dlt,dose.treated*cohortsize,phi=target)
+      # }
       if(is.na(mtd[count])){
         next
       }else{
@@ -388,7 +399,8 @@ get.oc.pop = function(target,n.cohort,cohortsize,titration=TRUE,
           dose.next <- length(skeleton)
         }
       }
-      mtd[count] <- iso(dose.dlt,dose.treated*cohortsize,phi=target)
+      # mtd[count] <- iso(dose.dlt,dose.treated*cohortsize,phi=target)
+      mtd[count] <- iso.pop(dose.dlt,dose.treated)
       num.p <- num.p+dose.treated*cohortsize
       num.tox <- num.tox+dose.dlt
       if(true.mtd==1){
@@ -429,8 +441,10 @@ get.oc.pop = function(target,n.cohort,cohortsize,titration=TRUE,
     }
   }
 
-
-  res[which(is.na(res))] <- -Inf
+  res[2,which(is.na(res[c(2),]))] <- -Inf
+  res[c(4),which(is.na(res[c(4),]))] <- -Inf
+  res[3,which(is.na(res[c(3),]))] <- Inf
+  res[c(5),which(is.na(res[c(5),]))] <- Inf
 
   if (earlyterm){
     if (titration){
@@ -445,7 +459,7 @@ get.oc.pop = function(target,n.cohort,cohortsize,titration=TRUE,
                          skeleton=skeleton,start=start,n.trial=n.trial,
                          n.cohort = n.cohort,cohortsize=cohortsize)
     }
-    out$sel.pct <- cont(x = out$num.mtd, n.level = length(skeleton))/n.trial
+    out$sel.pct <- cont(x = out$num.mtd, n.level = length(skeleton))
     out$num.p <- colSums(out$num.p)/n.trial
     out$num.tox <- colSums(out$num.tox)/n.trial
     out$early <- mean(out$early)
@@ -465,7 +479,7 @@ get.oc.pop = function(target,n.cohort,cohortsize,titration=TRUE,
                    n.trial = n.trial,n.cohort = n.cohort,cohortsize=cohortsize)
     }
 
-    out$sel.pct <- cont(x = out$num.mtd, n.level = length(skeleton))/n.trial
+    out$sel.pct <- cont(x = out$num.mtd, n.level = length(skeleton))
     out$num.p <- out$num.p/n.trial
     out$num.tox <- out$num.tox/n.trial
     out$risk.over <- mean(out$risk.over)

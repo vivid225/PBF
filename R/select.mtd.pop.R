@@ -60,7 +60,7 @@ select.mtd.pop <- function(target, n.pts, n.tox){
   p.iso = p.iso + (1:length(p.iso)) * 1e-10
 
   ## eliminate dose based on posterior probability
-  K = length(n)
+  K = length(n.pts)
   elimi = rep(0, K)
   for (i in 1:K) {
     if (1 - pbeta(target, n.tox[i] + 1, n.pts[i] - n.tox[i] + 1) > 0.95) {
