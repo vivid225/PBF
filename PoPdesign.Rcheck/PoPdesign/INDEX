@@ -1,0 +1,12 @@
+get.boundary.pop        Generate the dose escalation and de-escalation
+                        boundaries for single-agent trials.
+get.oc.pop              Operating characteristics for single-agent
+                        trials
+plot.pop                Plot the flowchart and simulation results for
+                        PoP designs
+print.pop               Generate descriptive summary for objects
+                        returned by other functions
+select.mtd.pop          Maximum tolerated dose (MTD) selection for
+                        single-agent trials
+summary.pop             Generate descriptive summary for objects
+                        returned by other functions in PoPdesign
