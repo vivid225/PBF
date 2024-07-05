@@ -104,7 +104,7 @@ library(PoPdesign)
 By specifying the number of cohorts (n.cohort), cohort size and the target DLT rate (target), we can obtain the dose escalation and de-escalation boundaries through the get.boundary.pop() function. The more completed version of the decision boundaries gives a flexible choice when the patient enrollment cannot strictly stick to the cohortsize. 
 
 ```{r}
-bd <-  get.boundary.pop(n.cohort = 10, cohortsize = 3, target=0.3, 
+bd <-  get.boundary.pop(n = 15, cohortsize = 3, target=0.3, 
                         cutoff=2.5, K=3,cutoff_e=5/24)
 summary(bd)
 ```
@@ -136,7 +136,7 @@ We recommend setting $b_1 \in [0.2,0.3], b_2\in[0.5,0.75]$. $b_3$ is recommended
 The function get.oc.pop() can be used to obtain the operating characteristics of the PoP design.
 
 ```{r}
-oc <- get.oc.pop(target=0.3,n.cohort=10,cohortsize=3,titration=TRUE,
+oc <- get.oc.pop(target=0.3,n=15,cohortsize=3,titration=TRUE,
                  cutoff=2.5,cutoff_e=5/24,
                  skeleton=c(0.3,0.4,0.5,0.6),n.trial=1000,
                      risk.cutoff=0.8,earlyterm=TRUE,start=1)
